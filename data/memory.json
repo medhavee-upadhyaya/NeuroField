@@ -1,0 +1,14 @@
+{
+  "treated_sectors": {},
+  "intervention_stats": {
+    "irrigate": {"attempts": 0, "successes": 0},
+    "spray": {"attempts": 0, "successes": 0},
+    "fertilize": {"attempts": 0, "successes": 0},
+    "navigate": {"attempts": 0, "successes": 0},
+    "report": {"attempts": 0, "successes": 0},
+    "wait": {"attempts": 0, "successes": 0}
+  },
+  "chronic_sectors": {},
+  "event_log": [],
+  "last_updated": null
+}
