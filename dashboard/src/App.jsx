@@ -3,6 +3,7 @@ import FarmGrid from "./FarmGrid";
 import AgentLog from "./AgentLog";
 import SensorPanel from "./SensorPanel";
 import ReplayPanel from "./ReplayPanel";
+import ChatPanel from "./ChatPanel";
 
 const WS_URL = "ws://localhost:8000/ws/live";
 const API_URL = "http://localhost:8000";
@@ -42,6 +43,7 @@ export default function App() {
   const [interventionsToday, setInterventionsToday] = useState(0);
   const [wsConnected, setWsConnected] = useState(false);
   const [showReplay, setShowReplay] = useState(false);
+  const [rightTab, setRightTab] = useState("sensor"); // "sensor" | "chat"
 
   const snapshot = isReplayMode ? replaySnapshot : liveSnapshot;
 
@@ -172,10 +174,25 @@ export default function App() {
         </div>
 
         <div style={styles.rightPanel}>
-          <div style={styles.panelHeader}>
-            {selectedSector ? `SECTOR ${selectedSector}` : "SELECT A SECTOR"}
+          <div style={styles.tabBar}>
+            <button
+              onClick={() => setRightTab("sensor")}
+              style={{ ...styles.tab, ...(rightTab === "sensor" ? styles.tabActive : {}) }}
+            >
+              {selectedSector ? `📡 ${selectedSector}` : "📡 SENSOR"}
+            </button>
+            <button
+              onClick={() => setRightTab("chat")}
+              style={{ ...styles.tab, ...(rightTab === "chat" ? styles.tabActive : {}) }}
+            >
+              💬 CHAT
+            </button>
           </div>
-          <SectorPanel snapshot={snapshot} sectorId={selectedSector} />
+          {rightTab === "sensor" ? (
+            <SectorPanel snapshot={snapshot} sectorId={selectedSector} />
+          ) : (
+            <ChatPanel />
+          )}
         </div>
       </div>
     </div>
@@ -264,4 +281,16 @@ const styles = {
   legendItem: { display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "#8b949e" },
   legendColor: { width: 10, height: 10, borderRadius: 2 },
   emptySector: { color: "#8b949e", textAlign: "center", marginTop: 40, lineHeight: 1.6 },
+  tabBar: {
+    display: "flex", borderBottom: "1px solid #30363d", marginBottom: 8,
+  },
+  tab: {
+    background: "none", border: "none", borderBottom: "2px solid transparent",
+    color: "#8b949e", fontSize: 10, fontWeight: 700, padding: "4px 10px",
+    cursor: "pointer", fontFamily: "inherit", letterSpacing: 1,
+    marginBottom: -1,
+  },
+  tabActive: {
+    color: "#e6edf3", borderBottomColor: "#4caf50",
+  },
 };

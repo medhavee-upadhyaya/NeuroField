@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import router, inject
 from api.replay import replay_router, inject_logger
+from api.chat import chat_router, inject_chat
 from api.websocket import manager
 
 app = FastAPI(title="NeuroField API", version="1.0.0")
@@ -21,6 +22,7 @@ app.add_middleware(
 
 app.include_router(router)
 app.include_router(replay_router)
+app.include_router(chat_router)
 
 # injected at startup
 _sensors = None
@@ -72,6 +74,7 @@ def setup_api(sensors, memory, brain, robot, logger=None):
     _sensors = sensors
     _brain = brain
     inject(sensors, memory, brain, robot)
+    inject_chat(sensors, memory, brain)
     if logger:
         inject_logger(logger)
 

@@ -143,6 +143,88 @@ def build_worker_message(task: dict, snapshot: dict) -> str:
     return "\n".join(lines)
 
 
+CHAT_SYSTEM_PROMPT = """You are NeuroField's farm intelligence assistant.
+
+You have access to live sensor data, agent memory, and the full decision history of an autonomous agricultural AI managing a 10×10 farm grid. Each sector is labeled A1–J10.
+
+Your job is to answer questions from farm operators about what is happening on the farm, why the AI made certain decisions, and what the current status of any sector or problem is.
+
+Rules:
+- Always cite specific sensor values when discussing a sector (soil_moisture, crop_health, temperature)
+- Refer to agent decisions by their action type and sector (e.g. "the agent sprayed E6 at 14:32")
+- Be concise — 2–4 sentences unless the question requires more
+- If you don't have enough context to answer precisely, say so
+- Use plain language, not jargon"""
+
+
+def build_chat_context(snapshot: dict, memory: dict, recent_decisions: list) -> str:
+    stats = snapshot.get("stats", {})
+    anomalies = snapshot.get("active_anomalies", [])
+    chronic = memory.get("chronic_sectors", {})
+    stats_by_action = memory.get("intervention_stats", {})
+
+    problem_sectors = []
+    for sid, s in snapshot.get("sectors", {}).items():
+        issues = []
+        if s["soil_moisture"] < 0.35:
+            issues.append(f"moisture={s['soil_moisture']:.2f}")
+        if s["crop_health"] < 0.55:
+            issues.append(f"health={s['crop_health']:.2f}")
+        if s["temperature"] > 33:
+            issues.append(f"temp={s['temperature']:.1f}°C")
+        if issues:
+            problem_sectors.append((sid, issues, s.get("anomalies", [])))
+    problem_sectors.sort(key=lambda x: len(x[1]), reverse=True)
+
+    lines = [
+        "=== CURRENT FARM STATE ===",
+        f"Sectors: {stats.get('total_sectors', 100)} | "
+        f"Active anomalies: {stats.get('anomaly_count', 0)} | "
+        f"Critical sectors: {stats.get('critical_sectors', 0)}",
+        "",
+    ]
+
+    if problem_sectors:
+        lines.append("Problem sectors:")
+        for sid, issues, sector_anomalies in problem_sectors[:8]:
+            anom = f" [{', '.join(sector_anomalies)}]" if sector_anomalies else ""
+            lines.append(f"  {sid}: {', '.join(issues)}{anom}")
+        lines.append("")
+
+    if anomalies:
+        lines.append("Active anomalies:")
+        for a in sorted(anomalies, key=lambda x: -x["severity"])[:6]:
+            lines.append(f"  {a['sector']}: {a['type']} severity={a['severity']:.2f} ({a['cycles']} cycles)")
+        lines.append("")
+
+    if chronic:
+        lines.append("Chronic problem sectors:")
+        for sid, info in list(chronic.items())[:5]:
+            lines.append(f"  {sid}: {info['occurrences']} incidents")
+        lines.append("")
+
+    lines.append("Intervention stats (attempts/successes):")
+    for action, s in stats_by_action.items():
+        if s["attempts"] > 0:
+            lines.append(f"  {action}: {s['attempts']} attempts, {s['successes']} successes")
+    lines.append("")
+
+    if recent_decisions:
+        lines.append("Recent agent decisions (newest first):")
+        for d in recent_decisions[:6]:
+            import time as _time
+            ts = _time.strftime("%H:%M:%S", _time.localtime(d.get("timestamp", 0)))
+            agent = d.get("agent", "agent")
+            action = d.get("action", "?")
+            sector = d.get("target_sector", "?")
+            conf = d.get("confidence", 0)
+            lines.append(f"  [{ts}] {agent}: {action} → {sector} (conf={conf:.2f})")
+        lines.append("")
+
+    lines.append("=== END CONTEXT ===")
+    return "\n".join(lines)
+
+
 # kept for any legacy callers
 SYSTEM_PROMPT = SUPERVISOR_PROMPT
 
