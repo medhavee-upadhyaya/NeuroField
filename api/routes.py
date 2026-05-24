@@ -35,6 +35,7 @@ async def get_state():
         "robot": robot_pos,
         "agent_status": _brain.status if _brain else "offline",
         "last_decision": _brain.last_decision if _brain else None,
+        "last_queue": _brain.last_queue if _brain else None,
     }
 
 

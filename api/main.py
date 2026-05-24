@@ -53,6 +53,7 @@ async def broadcast_loop():
                 brain_status = route_brain.status
                 last_decision = route_brain.last_decision
 
+            last_queue = route_brain.last_queue if route_brain else None
             await manager.broadcast({
                 "type": "state_update",
                 "timestamp": time.time(),
@@ -60,6 +61,7 @@ async def broadcast_loop():
                 "robot": robot_pos,
                 "agent_status": brain_status,
                 "last_decision": last_decision,
+                "last_queue": last_queue,
             })
         await asyncio.sleep(2.0)
 

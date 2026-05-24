@@ -1,19 +1,17 @@
-"""Anthropic API agent loop — the reasoning brain of NeuroField."""
+"""Orchestrator — runs Supervisor → Worker pipeline every cycle."""
 import asyncio
 import os
 import time
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 import anthropic
 
 from agent.memory import AgentMemory
-from agent.planner import parse_action_plan
-from agent.prompts import SYSTEM_PROMPT, build_user_message
+from agent.supervisor import Supervisor
+from agent.worker import Worker
 from simulation.sensors import SensorStream
 
-CYCLE_INTERVAL = 10  # seconds between agent cycles
-MAX_RETRIES = 3
-RETRY_DELAY = 2.0
+CYCLE_INTERVAL = 10
 
 
 class NeuroFieldBrain:
@@ -21,83 +19,129 @@ class NeuroFieldBrain:
         self.sensors = sensors
         self.memory = memory
         self.client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        self.supervisor = Supervisor(self.client)
+        self.worker = Worker(self.client)
         self._running = False
-        self._on_decision: Optional[Callable] = None
+        self._on_supervisor_plan: Optional[Callable] = None
+        self._on_worker_decision: Optional[Callable] = None
         self._on_execution_request: Optional[Callable] = None
+        # legacy compat used by api/routes.py
         self.last_decision: Optional[dict] = None
-        self.status = "idle"  # idle | thinking | acting
+        self.last_queue: Optional[dict] = None
+        self.status = "idle"
 
     def on_decision(self, callback: Callable):
-        self._on_decision = callback
+        """Legacy callback — fires on every Worker decision (for WS broadcast)."""
+        self._on_worker_decision = callback
 
     def on_execution_request(self, callback: Callable):
         self._on_execution_request = callback
 
     async def run(self):
         self._running = True
-        print("[Brain] Agent loop started")
+        print("[Orchestrator] Multi-agent loop started (Supervisor → Worker)")
         while self._running:
             try:
                 await self._cycle()
             except Exception as e:
-                print(f"[Brain] Cycle error: {e}")
+                print(f"[Orchestrator] Cycle error: {e}")
             await asyncio.sleep(CYCLE_INTERVAL)
 
     async def _cycle(self):
-        self.status = "thinking"
         snapshot = self.sensors.tick()
         memory_summary = self.memory.summary_for_agent()
-        user_msg = build_user_message(snapshot, memory_summary)
 
-        print(f"\n[Brain] === Cycle at {time.strftime('%H:%M:%S')} ===")
-        print(f"[Brain] Anomalies: {snapshot['stats']['anomaly_count']} | Critical: {snapshot['stats']['critical_sectors']}")
+        print(f"\n[Orchestrator] === {time.strftime('%H:%M:%S')} | "
+              f"anomalies={snapshot['stats']['anomaly_count']} "
+              f"critical={snapshot['stats']['critical_sectors']} ===")
 
-        decision = await self._call_claude(user_msg)
-        if not decision:
+        # ── Step 1: Supervisor plans ──────────────────────────────────────
+        self.status = "thinking"
+        plan = await self.supervisor.plan(snapshot, memory_summary)
+        if not plan:
             self.status = "idle"
             return
+
+        self.last_queue = plan
+        queue: List[dict] = plan.get("priority_queue", [])
+        summary = plan.get("farm_summary", "")
+
+        print(f"[Supervisor] {summary}")
+        for i, task in enumerate(queue):
+            print(f"[Supervisor]   [{i+1}] {task['sector']} → {task['action']} ({task['urgency']})")
+
+        if self._on_supervisor_plan:
+            await self._on_supervisor_plan(plan, snapshot)
+
+        # broadcast supervisor plan to dashboard
+        if self._on_worker_decision:
+            await self._on_worker_decision(
+                {
+                    "agent": "supervisor",
+                    "farm_summary": summary,
+                    "priority_queue": queue,
+                    "observation": summary,
+                    "diagnosis": f"{len(queue)} tasks queued",
+                    "confidence": 1.0,
+                    "action": queue[0]["action"] if queue else "wait",
+                    "target_sector": queue[0]["sector"] if queue else "",
+                    "reasoning": "\n".join(f"{t['sector']}: {t['reasoning']}" for t in queue),
+                    "alert_level": queue[0]["urgency"] if queue else "low",
+                    "timestamp": time.time(),
+                },
+                snapshot,
+            )
+
+        # ── Step 2: Worker executes top task ─────────────────────────────
+        if not queue:
+            self.status = "idle"
+            return
+
+        top_task = queue[0]
+        if top_task["action"] in ("wait",):
+            self.status = "idle"
+            return
+
+        self.status = "acting"
+        print(f"[Worker] Confirming task: {top_task['sector']} → {top_task['action']}")
+        worker_result = await self.worker.execute_task(top_task, snapshot)
+
+        if not worker_result:
+            self.status = "idle"
+            return
+
+        # Build a decision record compatible with memory + dashboard
+        decision = {
+            "agent": "worker",
+            "observation": f"Assigned: {top_task['action']} on {top_task['sector']}",
+            "diagnosis": worker_result.get("reasoning", ""),
+            "confidence": worker_result.get("confidence", 0),
+            "action": worker_result.get("action", "report"),
+            "target_sector": worker_result.get("target_sector", top_task["sector"]),
+            "reasoning": worker_result.get("reasoning", ""),
+            "alert_level": worker_result.get("alert_level", "low"),
+            "confirmed": worker_result.get("confirmed", False),
+            "timestamp": time.time(),
+        }
 
         self.last_decision = decision
         self.memory.record_decision(decision, snapshot["timestamp"])
 
-        print(f"[Brain] Action: {decision['action']} → {decision['target_sector']} "
-              f"(confidence={decision['confidence']:.2f}, alert={decision['alert_level']})")
-        print(f"[Brain] Diagnosis: {decision['diagnosis']}")
+        confirmed = worker_result.get("confirmed", False)
+        print(f"[Worker] {'✓ Confirmed' if confirmed else '✗ Rejected'}: "
+              f"{decision['action']} → {decision['target_sector']} "
+              f"(confidence={decision['confidence']:.2f})")
 
-        if self._on_decision:
-            await self._on_decision(decision, snapshot)
+        if self._on_worker_decision:
+            await self._on_worker_decision(decision, snapshot)
 
-        if decision["action"] not in ("report", "wait") and self._on_execution_request:
-            self.status = "acting"
+        if confirmed and decision["action"] not in ("report", "wait") and self._on_execution_request:
             result = await self._on_execution_request(decision["action"], decision["target_sector"])
             self.memory.record_execution(result, decision)
-            print(f"[Brain] Execution: {'✓' if result.get('success') else '✗'} "
+            print(f"[Worker] Execution: {'✓' if result.get('success') else '✗'} "
                   f"({result.get('duration', 0):.1f}s)")
 
         self.status = "idle"
-
-    async def _call_claude(self, user_message: str) -> Optional[dict]:
-        for attempt in range(MAX_RETRIES):
-            try:
-                response = await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: self.client.messages.create(
-                        model="claude-sonnet-4-6",
-                        max_tokens=1024,
-                        system=SYSTEM_PROMPT,
-                        messages=[{"role": "user", "content": user_message}],
-                    )
-                )
-                raw = response.content[0].text
-                plan = parse_action_plan(raw)
-                if plan:
-                    return plan
-                print(f"[Brain] Parse failed (attempt {attempt + 1}): {raw[:200]}")
-            except Exception as e:
-                print(f"[Brain] API error (attempt {attempt + 1}): {e}")
-                if attempt < MAX_RETRIES - 1:
-                    await asyncio.sleep(RETRY_DELAY * (attempt + 1))
-        return None
 
     def stop(self):
         self._running = False

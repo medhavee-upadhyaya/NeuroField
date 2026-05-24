@@ -1,93 +1,150 @@
-SYSTEM_PROMPT = """You are NeuroField, an autonomous agricultural AI agent.
-You control a physical robot on a farm grid.
-You observe sensor data, reason about crop health,
-and dispatch precise interventions.
+SUPERVISOR_PROMPT = """You are the NeuroField Supervisor — the strategic planning layer of an autonomous agricultural AI.
 
-You must always:
-- Reason step by step before acting
-- Justify every action with sensor evidence
-- Output a structured JSON action plan
-- Flag uncertainty rather than guess
+You survey the entire farm grid, triage all active problems, and produce a prioritized work queue for the Worker agent to execute one task at a time.
 
-Available actions:
-- irrigate: Deploy water to a sector with low soil moisture
-- spray: Apply pesticide to a sector with pest outbreak
-- fertilize: Apply nutrients to a sector with nutrient deficiency
-- navigate: Move robot to a sector for closer inspection
-- report: Log an observation without physical intervention
-- wait: No action needed, continue monitoring
+You must:
+- Think across the whole farm, not just one sector
+- Rank problems by urgency and potential spread
+- Assign the single most impactful action per sector
+- Consider which sectors were recently treated (deprioritize them)
 
 Output format (respond ONLY with valid JSON, no markdown):
 {
-  "observation": "what you see in the sensor data",
-  "diagnosis": "what is wrong and why",
-  "confidence": 0.0,
+  "farm_summary": "one sentence describing overall farm health",
+  "priority_queue": [
+    {
+      "sector": "E6",
+      "action": "irrigate|spray|fertilize|navigate|report|wait",
+      "urgency": "critical|high|medium|low",
+      "reasoning": "why this sector, why this action"
+    }
+  ]
+}
+
+Rules:
+- priority_queue must have 1–4 items, ordered most urgent first
+- If farm is healthy, output one item with action "wait"
+- urgency "critical" = immediate threat to crop survival
+- Never queue the same sector twice
+- Consider spread risk: a spreading anomaly outranks a static one"""
+
+
+WORKER_PROMPT = """You are the NeuroField Worker — the tactical execution layer of an autonomous agricultural AI.
+
+The Supervisor has assigned you a specific task. Your job is to:
+1. Re-examine the current sensor data for the target sector
+2. Confirm whether the Supervisor's recommended action is still correct
+3. Execute or reject with clear reasoning
+
+Output format (respond ONLY with valid JSON, no markdown):
+{
+  "confirmed": true,
   "action": "irrigate|spray|fertilize|navigate|report|wait",
-  "target_sector": "A3",
-  "reasoning": "full chain of thought explaining the decision",
+  "target_sector": "E6",
+  "confidence": 0.0,
+  "reasoning": "detailed justification based on current sensor readings",
   "alert_level": "low|medium|critical"
 }
 
 Rules:
-- If confidence < 0.4, action must be "report" or "wait"
-- If multiple sectors need attention, choose the most critical
-- If a sector was treated in the last 60 seconds, deprioritize it
-- alert_level "critical" means immediate action required
-- Always output valid JSON with all fields populated"""
+- If sensor data no longer supports the action, set confirmed=false and action="report"
+- confidence < 0.4 forces confirmed=false
+- Be precise: cite actual sensor values in your reasoning
+- You are the last safety check before physical robot action"""
 
 
-def build_user_message(snapshot: dict, memory_summary: dict) -> str:
+def build_supervisor_message(snapshot: dict, memory_summary: dict) -> str:
     stats = snapshot.get("stats", {})
     anomalies = snapshot.get("active_anomalies", [])
-
-    critical_sectors = []
-    for sid, sector in snapshot["sectors"].items():
-        issues = []
-        if sector["soil_moisture"] < 0.25:
-            issues.append(f"drought stress (moisture={sector['soil_moisture']:.2f})")
-        elif sector["soil_moisture"] < 0.4:
-            issues.append(f"low moisture ({sector['soil_moisture']:.2f})")
-        if sector["crop_health"] < 0.35:
-            issues.append(f"critical health ({sector['crop_health']:.2f})")
-        elif sector["crop_health"] < 0.55:
-            issues.append(f"declining health ({sector['crop_health']:.2f})")
-        if sector["temperature"] > 35:
-            issues.append(f"heat stress ({sector['temperature']:.1f}°C)")
-        if issues:
-            critical_sectors.append({"sector": sid, "issues": issues, "anomalies": sector.get("anomalies", [])})
-
-    critical_sectors.sort(key=lambda x: len(x["issues"]), reverse=True)
-    top_sectors = critical_sectors[:5]
-
     treated_recently = memory_summary.get("treated_recently", [])
     chronic = memory_summary.get("chronic_sectors", {})
 
+    problem_sectors = []
+    for sid, sector in snapshot["sectors"].items():
+        issues = []
+        score = 0
+        if sector["soil_moisture"] < 0.2:
+            issues.append(f"drought (moisture={sector['soil_moisture']:.2f})")
+            score += 3
+        elif sector["soil_moisture"] < 0.35:
+            issues.append(f"low moisture ({sector['soil_moisture']:.2f})")
+            score += 1
+        if sector["crop_health"] < 0.3:
+            issues.append(f"critical health ({sector['crop_health']:.2f})")
+            score += 3
+        elif sector["crop_health"] < 0.5:
+            issues.append(f"poor health ({sector['crop_health']:.2f})")
+            score += 1
+        if sector["temperature"] > 35:
+            issues.append(f"heat stress ({sector['temperature']:.1f}°C)")
+            score += 2
+        if sid in treated_recently:
+            score = max(0, score - 2)
+        if issues:
+            problem_sectors.append((score, sid, issues, sector.get("anomalies", [])))
+
+    problem_sectors.sort(reverse=True)
+
     lines = [
-        f"SENSOR SNAPSHOT — {stats.get('total_sectors', 100)} sectors, "
-        f"{stats.get('anomaly_count', 0)} active anomalies, "
-        f"{stats.get('critical_sectors', 0)} critical sectors",
+        f"FARM OVERVIEW: {stats.get('total_sectors', 100)} sectors | "
+        f"{stats.get('anomaly_count', 0)} anomalies | "
+        f"{stats.get('critical_sectors', 0)} critical",
         "",
-        "TOP PRIORITY SECTORS:",
+        "PROBLEM SECTORS (scored by urgency):",
     ]
-    if top_sectors:
-        for item in top_sectors:
-            treated = " [RECENTLY TREATED]" if item["sector"] in treated_recently else ""
-            chronic_note = f" [CHRONIC - {chronic[item['sector']]['occurrences']} incidents]" if item["sector"] in chronic else ""
-            lines.append(f"  {item['sector']}{treated}{chronic_note}: {', '.join(item['issues'])}")
+    if problem_sectors:
+        for score, sid, issues, sector_anomalies in problem_sectors[:8]:
+            treated = " [TREATED RECENTLY]" if sid in treated_recently else ""
+            chronic_note = f" [CHRONIC x{chronic[sid]['occurrences']}]" if sid in chronic else ""
+            lines.append(f"  [{score:2d}] {sid}{treated}{chronic_note}: {', '.join(issues)}")
     else:
-        lines.append("  No critical sectors detected.")
+        lines.append("  All sectors nominal.")
 
     if anomalies:
-        lines.extend(["", "ACTIVE ANOMALIES:"])
-        for a in anomalies[:8]:
-            lines.append(f"  {a['sector']}: {a['type']} (severity={a['severity']:.2f}, cycles={a['cycles']})")
+        lines.extend(["", "SPREADING ANOMALIES:"])
+        for a in sorted(anomalies, key=lambda x: -x["severity"])[:6]:
+            lines.append(f"  {a['sector']}: {a['type']} sev={a['severity']:.2f} cycles={a['cycles']}")
 
     lines.extend([
         "",
-        f"MEMORY: {len(treated_recently)} sectors treated recently, "
-        f"{len(chronic)} known chronic sectors",
+        f"RECENTLY TREATED: {', '.join(treated_recently) or 'none'}",
+        f"CHRONIC SECTORS: {len(chronic)}",
         "",
-        "Analyze and dispatch the most urgent intervention.",
+        "Build the priority queue for the Worker agent.",
     ])
-
     return "\n".join(lines)
+
+
+def build_worker_message(task: dict, snapshot: dict) -> str:
+    sector_id = task.get("sector", "")
+    sector = snapshot.get("sectors", {}).get(sector_id, {})
+
+    lines = [
+        f"ASSIGNED TASK from Supervisor:",
+        f"  Sector:    {sector_id}",
+        f"  Action:    {task.get('action')}",
+        f"  Urgency:   {task.get('urgency')}",
+        f"  Reasoning: {task.get('reasoning')}",
+        "",
+        f"CURRENT SENSOR READINGS for {sector_id}:",
+    ]
+    if sector:
+        lines += [
+            f"  Soil moisture: {sector.get('soil_moisture', 0):.3f}",
+            f"  Crop health:   {sector.get('crop_health', 0):.3f}",
+            f"  Temperature:   {sector.get('temperature', 0):.1f}°C",
+            f"  Active anomalies: {', '.join(sector.get('anomalies', [])) or 'none'}",
+            f"  Last treated: {sector.get('last_treated', 'never')}",
+        ]
+    else:
+        lines.append("  No sensor data available for this sector.")
+
+    lines.extend(["", "Confirm or reject this task. Cite the sensor values in your reasoning."])
+    return "\n".join(lines)
+
+
+# kept for any legacy callers
+SYSTEM_PROMPT = SUPERVISOR_PROMPT
+
+def build_user_message(snapshot: dict, memory_summary: dict) -> str:
+    return build_supervisor_message(snapshot, memory_summary)
