@@ -44,6 +44,7 @@ export default function App() {
   const [wsConnected, setWsConnected] = useState(false);
   const [showReplay, setShowReplay] = useState(false);
   const [rightTab, setRightTab] = useState("sensor"); // "sensor" | "chat"
+  const [failedSectors, setFailedSectors] = useState({});
 
   const snapshot = isReplayMode ? replaySnapshot : liveSnapshot;
 
@@ -79,6 +80,21 @@ export default function App() {
         setInterventionsToday((n) => n + 1);
       }
       if (d.agent !== "supervisor") setAgentStatus("idle");
+    } else if (msg.type === "outcome_evaluated") {
+      const o = msg.outcome;
+      setDecisions((prev) => [...prev, { ...o, _type: "outcome" }].slice(-100));
+      if (!o.success) {
+        setFailedSectors((prev) => ({
+          ...prev,
+          [o.sector_id]: { action: o.action, fail_count: (prev[o.sector_id]?.fail_count || 0) + 1 },
+        }));
+      } else {
+        setFailedSectors((prev) => {
+          const next = { ...prev };
+          delete next[o.sector_id];
+          return next;
+        });
+      }
     }
   }, []);
 
@@ -152,12 +168,14 @@ export default function App() {
             robot={isReplayMode ? null : robot}
             selectedSector={selectedSector}
             onSelectSector={setSelectedSector}
+            failedSectors={isReplayMode ? {} : failedSectors}
           />
           <div style={styles.gridLegend}>
             <LegendItem color="#388e3c" label="Healthy" />
             <LegendItem color="#f9a825" label="Warning" />
             <LegendItem color="#c62828" label="Critical" />
             <LegendItem color="#1565c0" label="Robot" />
+            <LegendItem color="#ff5722" label="Failed TX" />
           </div>
         </div>
 

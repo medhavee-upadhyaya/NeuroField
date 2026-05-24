@@ -19,20 +19,18 @@ function robotGridPos(robotXY) {
   return { col: Math.max(0, Math.min(9, col)), row: Math.max(0, Math.min(9, row)) };
 }
 
-export default function FarmGrid({ snapshot, robot, selectedSector, onSelectSector }) {
+export default function FarmGrid({ snapshot, robot, selectedSector, onSelectSector, failedSectors = {} }) {
   const sectors = snapshot?.sectors || {};
   const robotPos = robotGridPos(robot);
 
   return (
     <div style={styles.wrapper}>
       <div style={styles.grid}>
-        {/* Column headers */}
         <div style={styles.cornerCell} />
         {COLS.map((c) => (
           <div key={c} style={styles.headerCell}>{c}</div>
         ))}
 
-        {/* Grid rows */}
         {ROWS.map((row, ri) => (
           <>
             <div key={`row-${row}`} style={styles.headerCell}>{row}</div>
@@ -45,6 +43,8 @@ export default function FarmGrid({ snapshot, robot, selectedSector, onSelectSect
               const isRobot = robotPos?.row === ri && robotPos?.col === ci;
               const isSelected = selectedSector === sid;
               const hasAnomaly = (s?.anomalies?.length ?? 0) > 0;
+              const hasFailed = sid in failedSectors;
+              const failCount = failedSectors[sid]?.fail_count || 0;
 
               return (
                 <div
@@ -53,14 +53,23 @@ export default function FarmGrid({ snapshot, robot, selectedSector, onSelectSect
                   style={{
                     ...styles.cell,
                     background: bg,
-                    outline: isSelected ? "2px solid #fff" : isRobot ? "2px solid #2196f3" : "none",
+                    outline: isSelected
+                      ? "2px solid #fff"
+                      : hasFailed
+                      ? `2px solid #ff5722`
+                      : isRobot
+                      ? "2px solid #2196f3"
+                      : "none",
                     cursor: "pointer",
                     position: "relative",
                   }}
-                  title={`${sid}: health=${health.toFixed(2)} moisture=${moisture.toFixed(2)}`}
+                  title={`${sid}: health=${health.toFixed(2)} moisture=${moisture.toFixed(2)}${hasFailed ? ` | FAILED TX x${failCount}` : ""}`}
                 >
                   {isRobot && <div style={styles.robotDot} />}
-                  {hasAnomaly && !isRobot && <div style={styles.anomalyDot} />}
+                  {hasFailed && !isRobot && (
+                    <div style={{ ...styles.failedDot, opacity: Math.min(0.5 + failCount * 0.2, 1) }} />
+                  )}
+                  {hasAnomaly && !isRobot && !hasFailed && <div style={styles.anomalyDot} />}
                 </div>
               );
             })}
@@ -86,37 +95,26 @@ const styles = {
   },
   cornerCell: { background: "#0d1117" },
   headerCell: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: "#21262d",
-    color: "#8b949e",
-    fontSize: 9,
-    fontWeight: 700,
+    display: "flex", alignItems: "center", justifyContent: "center",
+    background: "#21262d", color: "#8b949e", fontSize: 9, fontWeight: 700,
   },
   cell: {
-    width: CELL,
-    height: CELL,
-    borderRadius: 1,
+    width: CELL, height: CELL, borderRadius: 1,
     transition: "background 0.4s ease",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
+    display: "flex", alignItems: "center", justifyContent: "center",
   },
   robotDot: {
-    width: CELL * 0.45,
-    height: CELL * 0.45,
-    borderRadius: "50%",
-    background: "#2196f3",
-    border: "1.5px solid #fff",
-    boxShadow: "0 0 6px #2196f3",
-    animation: "pulse 1.2s infinite",
+    width: CELL * 0.45, height: CELL * 0.45, borderRadius: "50%",
+    background: "#2196f3", border: "1.5px solid #fff",
+    boxShadow: "0 0 6px #2196f3", animation: "pulse 1.2s infinite",
   },
   anomalyDot: {
-    width: CELL * 0.3,
-    height: CELL * 0.3,
-    borderRadius: "50%",
-    background: "#fff",
-    opacity: 0.7,
+    width: CELL * 0.3, height: CELL * 0.3, borderRadius: "50%",
+    background: "#fff", opacity: 0.7,
+  },
+  failedDot: {
+    width: CELL * 0.35, height: CELL * 0.35, borderRadius: "50%",
+    background: "#ff5722", border: "1px solid #fff",
+    boxShadow: "0 0 4px #ff5722",
   },
 };

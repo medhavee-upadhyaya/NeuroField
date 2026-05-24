@@ -29,7 +29,6 @@ async def run(headless: bool = False):
     # ---- wire agent callbacks ----
     async def on_decision(decision, snapshot):
         from api.websocket import manager
-        # log the agent action against the snapshot it acted on
         await logger.log_event("agent_decision", {
             "action": decision.get("action"),
             "sector": decision.get("target_sector"),
@@ -43,10 +42,27 @@ async def run(headless: bool = False):
             "snapshot_ts": snapshot["timestamp"],
         })
 
+    async def on_outcome(result):
+        from api.websocket import manager
+        await manager.broadcast({
+            "type": "outcome_evaluated",
+            "outcome": {
+                "sector_id": result.sector_id,
+                "action": result.action,
+                "success": result.success,
+                "pre": result.pre,
+                "post": result.post,
+                "delta": result.delta,
+                "note": result.note,
+                "evaluated_at": result.evaluated_at,
+            },
+        })
+
     async def on_execution_request(action: str, sector: str) -> dict:
         return await robot.execute_action(action, sector)
 
     brain.on_decision(on_decision)
+    brain.on_outcome(on_outcome)
     brain.on_execution_request(on_execution_request)
 
     # ---- periodic snapshot logging ----

@@ -58,6 +58,7 @@ def build_supervisor_message(snapshot: dict, memory_summary: dict) -> str:
     anomalies = snapshot.get("active_anomalies", [])
     treated_recently = memory_summary.get("treated_recently", [])
     chronic = memory_summary.get("chronic_sectors", {})
+    failed_treatments = memory_summary.get("failed_treatments", {})
 
     problem_sectors = []
     for sid, sector in snapshot["sectors"].items():
@@ -78,6 +79,9 @@ def build_supervisor_message(snapshot: dict, memory_summary: dict) -> str:
         if sector["temperature"] > 35:
             issues.append(f"heat stress ({sector['temperature']:.1f}°C)")
             score += 2
+        # failed treatment raises priority — something isn't working
+        if sid in failed_treatments:
+            score += 2 * failed_treatments[sid].get("fail_count", 1)
         if sid in treated_recently:
             score = max(0, score - 2)
         if issues:
@@ -96,7 +100,11 @@ def build_supervisor_message(snapshot: dict, memory_summary: dict) -> str:
         for score, sid, issues, sector_anomalies in problem_sectors[:8]:
             treated = " [TREATED RECENTLY]" if sid in treated_recently else ""
             chronic_note = f" [CHRONIC x{chronic[sid]['occurrences']}]" if sid in chronic else ""
-            lines.append(f"  [{score:2d}] {sid}{treated}{chronic_note}: {', '.join(issues)}")
+            failed = ""
+            if sid in failed_treatments:
+                ft = failed_treatments[sid]
+                failed = f" [FAILED TX: {ft['action']} x{ft['fail_count']} — try different action]"
+            lines.append(f"  [{score:2d}] {sid}{treated}{chronic_note}{failed}: {', '.join(issues)}")
     else:
         lines.append("  All sectors nominal.")
 
@@ -105,19 +113,29 @@ def build_supervisor_message(snapshot: dict, memory_summary: dict) -> str:
         for a in sorted(anomalies, key=lambda x: -x["severity"])[:6]:
             lines.append(f"  {a['sector']}: {a['type']} sev={a['severity']:.2f} cycles={a['cycles']}")
 
+    if failed_treatments:
+        lines.extend(["", "FAILED TREATMENTS (require different approach):"])
+        for sid, ft in list(failed_treatments.items())[:4]:
+            lines.append(
+                f"  {sid}: {ft['action']} failed {ft['fail_count']}x "
+                f"(Δhealth={ft['delta'].get('crop_health', 0):+.3f} "
+                f"Δmoisture={ft['delta'].get('soil_moisture', 0):+.3f})"
+            )
+
     lines.extend([
         "",
         f"RECENTLY TREATED: {', '.join(treated_recently) or 'none'}",
-        f"CHRONIC SECTORS: {len(chronic)}",
+        f"CHRONIC SECTORS: {len(chronic)} | FAILED TREATMENTS: {len(failed_treatments)}",
         "",
-        "Build the priority queue for the Worker agent.",
+        "Build the priority queue. For sectors with FAILED TX, assign a DIFFERENT action than the one that failed.",
     ])
     return "\n".join(lines)
 
 
-def build_worker_message(task: dict, snapshot: dict) -> str:
+def build_worker_message(task: dict, snapshot: dict, failed_treatments: dict = None) -> str:
     sector_id = task.get("sector", "")
     sector = snapshot.get("sectors", {}).get(sector_id, {})
+    failed_treatments = failed_treatments or {}
 
     lines = [
         f"ASSIGNED TASK from Supervisor:",
@@ -134,10 +152,19 @@ def build_worker_message(task: dict, snapshot: dict) -> str:
             f"  Crop health:   {sector.get('crop_health', 0):.3f}",
             f"  Temperature:   {sector.get('temperature', 0):.1f}°C",
             f"  Active anomalies: {', '.join(sector.get('anomalies', [])) or 'none'}",
-            f"  Last treated: {sector.get('last_treated', 'never')}",
         ]
     else:
         lines.append("  No sensor data available for this sector.")
+
+    if sector_id in failed_treatments:
+        ft = failed_treatments[sector_id]
+        lines += [
+            "",
+            f"OUTCOME HISTORY for {sector_id}:",
+            f"  Previous action '{ft['action']}' FAILED {ft['fail_count']}x",
+            f"  Effect: Δhealth={ft['delta'].get('crop_health', 0):+.3f}  Δmoisture={ft['delta'].get('soil_moisture', 0):+.3f}",
+            f"  Consider whether a DIFFERENT action is warranted.",
+        ]
 
     lines.extend(["", "Confirm or reject this task. Cite the sensor values in your reasoning."])
     return "\n".join(lines)

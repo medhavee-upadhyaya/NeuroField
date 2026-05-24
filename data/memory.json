@@ -10,5 +10,7 @@
   },
   "chronic_sectors": {},
   "event_log": [],
+  "outcome_log": [],
+  "failed_treatments": {},
   "last_updated": null
 }

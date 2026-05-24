@@ -31,6 +31,8 @@ class AgentMemory:
             },
             "chronic_sectors": {},
             "event_log": [],
+            "outcome_log": [],
+            "failed_treatments": {},
             "last_updated": None,
         }
 
@@ -49,7 +51,14 @@ class AgentMemory:
             "treated_recently": treated_recently,
             "chronic_sectors": self._data["chronic_sectors"],
             "intervention_stats": self._data["intervention_stats"],
+            "failed_treatments": self._data.get("failed_treatments", {}),
         }
+
+    def get_outcome_log(self, limit: int = 20) -> List[dict]:
+        return list(reversed(self._data.get("outcome_log", [])))[:limit]
+
+    def get_failed_treatments(self) -> dict:
+        return self._data.get("failed_treatments", {})
 
     def get_event_log(self, limit: int = 50) -> List[dict]:
         return list(reversed(self._data["event_log"]))[:limit]
@@ -102,6 +111,48 @@ class AgentMemory:
                 "time": time.time(),
                 "success": success,
             })
+
+        self._data["last_updated"] = time.time()
+        self.save()
+
+    def record_outcome(self, outcome) -> None:
+        """Called by OutcomeTracker with an OutcomeResult dataclass."""
+        entry = {
+            "sector_id": outcome.sector_id,
+            "action": outcome.action,
+            "success": outcome.success,
+            "pre": outcome.pre,
+            "post": outcome.post,
+            "delta": outcome.delta,
+            "evaluated_at": outcome.evaluated_at,
+            "note": outcome.note,
+        }
+        if "outcome_log" not in self._data:
+            self._data["outcome_log"] = []
+        self._data["outcome_log"].append(entry)
+        if len(self._data["outcome_log"]) > 100:
+            self._data["outcome_log"] = self._data["outcome_log"][-100:]
+
+        if not outcome.success:
+            if "failed_treatments" not in self._data:
+                self._data["failed_treatments"] = {}
+            prev = self._data["failed_treatments"].get(outcome.sector_id, {})
+            self._data["failed_treatments"][outcome.sector_id] = {
+                "action": outcome.action,
+                "fail_count": prev.get("fail_count", 0) + 1,
+                "delta": outcome.delta,
+                "last_failed_at": outcome.evaluated_at,
+            }
+        else:
+            # clear failure record on success
+            self._data.get("failed_treatments", {}).pop(outcome.sector_id, None)
+
+        # update action-level success rate
+        action = outcome.action
+        if action in self._data["intervention_stats"] and outcome.success:
+            self._data["intervention_stats"][action]["outcome_successes"] = (
+                self._data["intervention_stats"][action].get("outcome_successes", 0) + 1
+            )
 
         self._data["last_updated"] = time.time()
         self.save()

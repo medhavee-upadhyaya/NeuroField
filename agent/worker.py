@@ -49,8 +49,8 @@ class Worker:
         self.client = client
         self.last_result: Optional[dict] = None
 
-    async def execute_task(self, task: dict, snapshot: dict) -> Optional[dict]:
-        message = build_worker_message(task, snapshot)
+    async def execute_task(self, task: dict, snapshot: dict, failed_treatments: dict = None) -> Optional[dict]:
+        message = build_worker_message(task, snapshot, failed_treatments or {})
         for attempt in range(MAX_RETRIES):
             try:
                 response = await asyncio.get_event_loop().run_in_executor(

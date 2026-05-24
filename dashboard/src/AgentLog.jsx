@@ -132,6 +132,38 @@ function WorkerCard({ decision }) {
   );
 }
 
+function OutcomeCard({ outcome }) {
+  const success = outcome.success;
+  const color = success ? "#4caf50" : "#f44336";
+  const bg = success ? "#0d2818" : "#1a0a0a";
+
+  return (
+    <div style={{ ...styles.card, borderLeft: `3px solid ${color}`, background: bg }}>
+      <div style={styles.cardHeader}>
+        <div style={styles.cardLeft}>
+          <span style={styles.ts}>{new Date((outcome.evaluated_at || 0) * 1000).toLocaleTimeString("en-US", { hour12: false })}</span>
+          <span style={{ ...styles.agentBadge, background: color + "22", color, border: `1px solid ${color}44` }}>
+            {success ? "✓ OUTCOME OK" : "✗ OUTCOME FAILED"}
+          </span>
+        </div>
+        <span style={{ color: "#58a6ff", fontSize: 11 }}>{outcome.action} → {outcome.sector_id}</span>
+      </div>
+      <div style={styles.field}>
+        <span style={styles.label}>Δ</span>
+        <span style={styles.value}>
+          moisture {outcome.delta?.soil_moisture >= 0 ? "+" : ""}{outcome.delta?.soil_moisture?.toFixed(3)}
+          {"  "}
+          health {outcome.delta?.crop_health >= 0 ? "+" : ""}{outcome.delta?.crop_health?.toFixed(3)}
+        </span>
+      </div>
+      <div style={styles.field}>
+        <span style={styles.label}>NOTE</span>
+        <span style={{ ...styles.value, color: success ? "#81c784" : "#ef9a9a" }}>{outcome.note}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function AgentLog({ decisions }) {
   const bottomRef = useRef(null);
 
@@ -145,11 +177,11 @@ export default function AgentLog({ decisions }) {
 
   return (
     <div style={styles.log}>
-      {[...decisions].map((d, i) =>
-        d.agent === "supervisor"
-          ? <SupervisorCard key={i} decision={d} />
-          : <WorkerCard key={i} decision={d} />
-      )}
+      {[...decisions].map((d, i) => {
+        if (d._type === "outcome") return <OutcomeCard key={i} outcome={d} />;
+        if (d.agent === "supervisor") return <SupervisorCard key={i} decision={d} />;
+        return <WorkerCard key={i} decision={d} />;
+      })}
       <div ref={bottomRef} />
     </div>
   );

@@ -7,6 +7,7 @@ from typing import Callable, List, Optional
 import anthropic
 
 from agent.memory import AgentMemory
+from agent.outcome_tracker import OutcomeTracker
 from agent.supervisor import Supervisor
 from agent.worker import Worker
 from simulation.sensors import SensorStream
@@ -21,25 +22,35 @@ class NeuroFieldBrain:
         self.client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
         self.supervisor = Supervisor(self.client)
         self.worker = Worker(self.client)
+        self.outcome_tracker = OutcomeTracker()
         self._running = False
-        self._on_supervisor_plan: Optional[Callable] = None
         self._on_worker_decision: Optional[Callable] = None
         self._on_execution_request: Optional[Callable] = None
-        # legacy compat used by api/routes.py
+        self._on_outcome: Optional[Callable] = None
         self.last_decision: Optional[dict] = None
         self.last_queue: Optional[dict] = None
         self.status = "idle"
 
+        # wire outcome tracker → memory + broadcast
+        async def _handle_outcome(result):
+            self.memory.record_outcome(result)
+            if self._on_outcome:
+                await self._on_outcome(result)
+
+        self.outcome_tracker.on_outcome(_handle_outcome)
+
     def on_decision(self, callback: Callable):
-        """Legacy callback — fires on every Worker decision (for WS broadcast)."""
         self._on_worker_decision = callback
 
     def on_execution_request(self, callback: Callable):
         self._on_execution_request = callback
 
+    def on_outcome(self, callback: Callable):
+        self._on_outcome = callback
+
     async def run(self):
         self._running = True
-        print("[Orchestrator] Multi-agent loop started (Supervisor → Worker)")
+        print("[Orchestrator] Multi-agent loop started (Supervisor → Worker + Outcome Learning)")
         while self._running:
             try:
                 await self._cycle()
@@ -54,6 +65,14 @@ class NeuroFieldBrain:
         print(f"\n[Orchestrator] === {time.strftime('%H:%M:%S')} | "
               f"anomalies={snapshot['stats']['anomaly_count']} "
               f"critical={snapshot['stats']['critical_sectors']} ===")
+
+        # ── Check outcomes from previous interventions ────────────────────
+        new_outcomes = await self.outcome_tracker.check_due(snapshot)
+        if new_outcomes:
+            failed = [o for o in new_outcomes if not o.success]
+            succeeded = [o for o in new_outcomes if o.success]
+            if failed:
+                print(f"[Outcome] {len(failed)} failed, {len(succeeded)} succeeded — adjusting priorities")
 
         # ── Step 1: Supervisor plans ──────────────────────────────────────
         self.status = "thinking"
@@ -70,10 +89,6 @@ class NeuroFieldBrain:
         for i, task in enumerate(queue):
             print(f"[Supervisor]   [{i+1}] {task['sector']} → {task['action']} ({task['urgency']})")
 
-        if self._on_supervisor_plan:
-            await self._on_supervisor_plan(plan, snapshot)
-
-        # broadcast supervisor plan to dashboard
         if self._on_worker_decision:
             await self._on_worker_decision(
                 {
@@ -92,25 +107,23 @@ class NeuroFieldBrain:
                 snapshot,
             )
 
-        # ── Step 2: Worker executes top task ─────────────────────────────
-        if not queue:
+        # ── Step 2: Worker confirms and executes top task ─────────────────
+        if not queue or queue[0]["action"] == "wait":
             self.status = "idle"
             return
 
         top_task = queue[0]
-        if top_task["action"] in ("wait",):
-            self.status = "idle"
-            return
+        failed_treatments = memory_summary.get("failed_treatments", {})
 
         self.status = "acting"
-        print(f"[Worker] Confirming task: {top_task['sector']} → {top_task['action']}")
-        worker_result = await self.worker.execute_task(top_task, snapshot)
+        print(f"[Worker] Confirming: {top_task['sector']} → {top_task['action']}"
+              + (" [has failure history]" if top_task["sector"] in failed_treatments else ""))
 
+        worker_result = await self.worker.execute_task(top_task, snapshot, failed_treatments)
         if not worker_result:
             self.status = "idle"
             return
 
-        # Build a decision record compatible with memory + dashboard
         decision = {
             "agent": "worker",
             "observation": f"Assigned: {top_task['action']} on {top_task['sector']}",
@@ -138,8 +151,13 @@ class NeuroFieldBrain:
         if confirmed and decision["action"] not in ("report", "wait") and self._on_execution_request:
             result = await self._on_execution_request(decision["action"], decision["target_sector"])
             self.memory.record_execution(result, decision)
-            print(f"[Worker] Execution: {'✓' if result.get('success') else '✗'} "
-                  f"({result.get('duration', 0):.1f}s)")
+
+            if result.get("success"):
+                # register for outcome evaluation in 2 cycles
+                self.outcome_tracker.register(decision["target_sector"], decision["action"], snapshot)
+                print(f"[Worker] Executed in {result.get('duration', 0):.1f}s — outcome check in {20}s")
+            else:
+                print(f"[Worker] Execution failed: {result.get('error', '?')}")
 
         self.status = "idle"
 

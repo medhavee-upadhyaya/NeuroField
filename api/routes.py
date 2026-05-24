@@ -56,6 +56,16 @@ async def get_log(limit: int = 50):
     return {"log": _memory.get_event_log(limit=limit)}
 
 
+@router.get("/outcomes")
+async def get_outcomes(limit: int = 20):
+    if not _memory:
+        raise HTTPException(503, "Memory not available")
+    return {
+        "outcomes": _memory.get_outcome_log(limit=limit),
+        "failed_sectors": _memory.get_failed_treatments(),
+    }
+
+
 @router.get("/health")
 async def health():
     return {"status": "ok", "timestamp": time.time()}
