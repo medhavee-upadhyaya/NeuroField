@@ -4,6 +4,7 @@ import AgentLog from "./AgentLog";
 import SensorPanel from "./SensorPanel";
 import ReplayPanel from "./ReplayPanel";
 import ChatPanel from "./ChatPanel";
+import { useAlertToasts, AlertToastContainer, AlertHistoryPanel } from "./AlertToast";
 
 const WS_URL = "ws://localhost:8000/ws/live";
 const API_URL = "http://localhost:8000";
@@ -45,6 +46,9 @@ export default function App() {
   const [showReplay, setShowReplay] = useState(false);
   const [rightTab, setRightTab] = useState("sensor"); // "sensor" | "chat"
   const [failedSectors, setFailedSectors] = useState({});
+  const [alertHistory, setAlertHistory] = useState([]);
+  const [showAlerts, setShowAlerts] = useState(false);
+  const { toasts, addToast } = useAlertToasts();
 
   const snapshot = isReplayMode ? replaySnapshot : liveSnapshot;
 
@@ -80,6 +84,11 @@ export default function App() {
         setInterventionsToday((n) => n + 1);
       }
       if (d.agent !== "supervisor") setAgentStatus("idle");
+    } else if (msg.type === "alert_dispatched") {
+      const a = msg.alert;
+      addToast(a);
+      setAlertHistory((prev) => [a, ...prev].slice(0, 50));
+      setAlerts((n) => n + 1);
     } else if (msg.type === "outcome_evaluated") {
       const o = msg.outcome;
       setDecisions((prev) => [...prev, { ...o, _type: "outcome" }].slice(-100));
@@ -120,6 +129,24 @@ export default function App() {
 
   return (
     <div style={styles.app}>
+      <AlertToastContainer toasts={toasts} />
+
+      {showAlerts && (
+        <div style={styles.alertOverlay} onClick={() => setShowAlerts(false)}>
+          <div style={styles.alertPanel} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.alertPanelHeader}>
+              <span>🚨 ALERT HISTORY</span>
+              <button onClick={() => setShowAlerts(false)} style={styles.closeBtn}>✕</button>
+            </div>
+            <AlertHistoryPanel alerts={alertHistory} />
+            <div style={{ marginTop: 8, fontSize: 10, color: "#8b949e" }}>
+              Configure webhook/email in <code>data/alerts_config.json</code> or set{" "}
+              <code>NEUROFIELD_WEBHOOK_URL</code> env var.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top bar */}
       <div style={styles.topBar}>
         <div style={styles.topLeft}>
@@ -130,7 +157,14 @@ export default function App() {
           )}
         </div>
         <div style={styles.topMetrics}>
-          <Metric label="ALERTS" value={alerts} color={alerts > 0 ? "#f44336" : "#4caf50"} />
+          <div
+            onClick={() => setShowAlerts((v) => !v)}
+            style={{ cursor: "pointer", position: "relative" }}
+            title="Click to view alert history"
+          >
+            <Metric label="ALERTS" value={alerts} color={alerts > 0 ? "#f44336" : "#4caf50"} />
+            {alerts > 0 && <div style={styles.alertPing} />}
+          </div>
           <Metric label="INTERVENTIONS TODAY" value={interventionsToday} color="#2196f3" />
           <div style={styles.agentStatus}>
             <div style={{ ...styles.statusDot, background: isReplayMode ? "#7c4dff" : statusColor }} />
@@ -310,5 +344,29 @@ const styles = {
   },
   tabActive: {
     color: "#e6edf3", borderBottomColor: "#4caf50",
+  },
+  alertPing: {
+    position: "absolute", top: 0, right: -4,
+    width: 8, height: 8, borderRadius: "50%",
+    background: "#f44336", animation: "pulse 1.2s infinite",
+  },
+  alertOverlay: {
+    position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
+    zIndex: 900, display: "flex", alignItems: "flex-start",
+    justifyContent: "flex-end", padding: 16, paddingTop: 60,
+  },
+  alertPanel: {
+    background: "#161b22", border: "1px solid #f4433640",
+    borderRadius: 8, padding: 16, width: 400, maxHeight: "70vh",
+    overflowY: "auto", display: "flex", flexDirection: "column", gap: 8,
+  },
+  alertPanelHeader: {
+    display: "flex", justifyContent: "space-between", alignItems: "center",
+    fontSize: 11, fontWeight: 700, color: "#f44336", letterSpacing: 1,
+    marginBottom: 4,
+  },
+  closeBtn: {
+    background: "none", border: "none", color: "#8b949e",
+    cursor: "pointer", fontSize: 14, fontFamily: "inherit",
   },
 };

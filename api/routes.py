@@ -66,6 +66,16 @@ async def get_outcomes(limit: int = 20):
     }
 
 
+@router.get("/alerts")
+async def get_alerts(limit: int = 20):
+    if not _brain:
+        raise HTTPException(503, "Brain not available")
+    return {
+        "alerts": _brain.alerts.get_log(limit=limit),
+        "unread_count": _brain.alerts.get_unread_count(),
+    }
+
+
 @router.get("/health")
 async def health():
     return {"status": "ok", "timestamp": time.time()}

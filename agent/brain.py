@@ -6,6 +6,7 @@ from typing import Callable, List, Optional
 
 import anthropic
 
+from agent.alert_dispatcher import AlertDispatcher
 from agent.memory import AgentMemory
 from agent.outcome_tracker import OutcomeTracker
 from agent.supervisor import Supervisor
@@ -23,21 +24,36 @@ class NeuroFieldBrain:
         self.supervisor = Supervisor(self.client)
         self.worker = Worker(self.client)
         self.outcome_tracker = OutcomeTracker()
+        self.alerts = AlertDispatcher()
         self._running = False
         self._on_worker_decision: Optional[Callable] = None
         self._on_execution_request: Optional[Callable] = None
         self._on_outcome: Optional[Callable] = None
+        self._on_alert: Optional[Callable] = None
         self.last_decision: Optional[dict] = None
         self.last_queue: Optional[dict] = None
         self.status = "idle"
 
-        # wire outcome tracker → memory + broadcast
+        # wire outcome tracker → memory + broadcast + alert check
         async def _handle_outcome(result):
             self.memory.record_outcome(result)
             if self._on_outcome:
                 await self._on_outcome(result)
+            # escalate repeated failures to humans
+            if not result.success:
+                fail_count = self.memory.get_failed_treatments().get(
+                    result.sector_id, {}
+                ).get("fail_count", 1)
+                await self.alerts.check_outcome_failure(result, fail_count)
 
         self.outcome_tracker.on_outcome(_handle_outcome)
+
+        # wire alert dispatcher → broadcast
+        async def _handle_alert(alert):
+            if self._on_alert:
+                await self._on_alert(alert)
+
+        self.alerts.on_alert(_handle_alert)
 
     def on_decision(self, callback: Callable):
         self._on_worker_decision = callback
@@ -48,9 +64,12 @@ class NeuroFieldBrain:
     def on_outcome(self, callback: Callable):
         self._on_outcome = callback
 
+    def on_alert(self, callback: Callable):
+        self._on_alert = callback
+
     async def run(self):
         self._running = True
-        print("[Orchestrator] Multi-agent loop started (Supervisor → Worker + Outcome Learning)")
+        print("[Orchestrator] Multi-agent loop started (Supervisor → Worker + Outcomes + Alerts)")
         while self._running:
             try:
                 await self._cycle()
@@ -66,13 +85,17 @@ class NeuroFieldBrain:
               f"anomalies={snapshot['stats']['anomaly_count']} "
               f"critical={snapshot['stats']['critical_sectors']} ===")
 
-        # ── Check outcomes from previous interventions ────────────────────
+        # ── Check outcomes ────────────────────────────────────────────────
         new_outcomes = await self.outcome_tracker.check_due(snapshot)
         if new_outcomes:
             failed = [o for o in new_outcomes if not o.success]
-            succeeded = [o for o in new_outcomes if o.success]
             if failed:
-                print(f"[Outcome] {len(failed)} failed, {len(succeeded)} succeeded — adjusting priorities")
+                print(f"[Outcome] {len(failed)} failed — adjusting priorities")
+
+        # ── Check spreading anomalies for alert threshold ─────────────────
+        await self.alerts.check_spreading_anomaly(
+            snapshot.get("active_anomalies", []), snapshot
+        )
 
         # ── Step 1: Supervisor plans ──────────────────────────────────────
         self.status = "thinking"
@@ -148,14 +171,16 @@ class NeuroFieldBrain:
         if self._on_worker_decision:
             await self._on_worker_decision(decision, snapshot)
 
+        # ── Check if this decision warrants a human alert ─────────────────
+        await self.alerts.check_worker_decision(decision, snapshot)
+
         if confirmed and decision["action"] not in ("report", "wait") and self._on_execution_request:
             result = await self._on_execution_request(decision["action"], decision["target_sector"])
             self.memory.record_execution(result, decision)
 
             if result.get("success"):
-                # register for outcome evaluation in 2 cycles
                 self.outcome_tracker.register(decision["target_sector"], decision["action"], snapshot)
-                print(f"[Worker] Executed in {result.get('duration', 0):.1f}s — outcome check in {20}s")
+                print(f"[Worker] Executed in {result.get('duration', 0):.1f}s — outcome check in 20s")
             else:
                 print(f"[Worker] Execution failed: {result.get('error', '?')}")
 

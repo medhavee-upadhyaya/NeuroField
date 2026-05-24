@@ -1,0 +1,25 @@
+{
+  "enabled": true,
+  "cooldown_seconds": 300,
+  "triggers": {
+    "critical_action_confirmed": true,
+    "treatment_failed_twice": true,
+    "sector_health_below": 0.2,
+    "spreading_anomaly_severity": 0.8
+  },
+  "channels": {
+    "webhook": {
+      "enabled": false,
+      "url": "",
+      "format": "slack"
+    },
+    "email": {
+      "enabled": false,
+      "smtp_host": "smtp.gmail.com",
+      "smtp_port": 587,
+      "from": "",
+      "to": "",
+      "use_tls": true
+    }
+  }
+}

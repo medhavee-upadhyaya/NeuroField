@@ -58,11 +58,27 @@ async def run(headless: bool = False):
             },
         })
 
+    async def on_alert(alert):
+        from api.websocket import manager
+        await manager.broadcast({
+            "type": "alert_dispatched",
+            "alert": {
+                "level": alert.level,
+                "trigger": alert.trigger,
+                "sector_id": alert.sector_id,
+                "message": alert.message,
+                "timestamp": alert.timestamp,
+                "dispatched_via": alert.dispatched_via,
+            },
+        })
+        print(f"[Alert] Broadcast to dashboard: {alert.sector_id} — {alert.trigger}")
+
     async def on_execution_request(action: str, sector: str) -> dict:
         return await robot.execute_action(action, sector)
 
     brain.on_decision(on_decision)
     brain.on_outcome(on_outcome)
+    brain.on_alert(on_alert)
     brain.on_execution_request(on_execution_request)
 
     # ---- periodic snapshot logging ----
