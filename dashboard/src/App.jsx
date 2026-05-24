@@ -67,15 +67,13 @@ export default function App() {
       setRobot(msg.robot);
       setAgentStatus(msg.agent_status || "idle");
       setAlerts(msg.snapshot?.stats?.critical_sectors || 0);
-      if (msg.last_decision) {
-        setDecisions((prev) => [msg.last_decision, ...prev].slice(0, 100));
-      }
     } else if (msg.type === "agent_decision") {
-      setDecisions((prev) => [msg.decision, ...prev].slice(0, 100));
-      setAgentStatus("idle");
-      if (msg.decision?.action && !["report", "wait"].includes(msg.decision.action)) {
+      const d = msg.decision;
+      setDecisions((prev) => [...prev, d].slice(-100));
+      if (d.agent === "worker" && d.confirmed && !["report", "wait"].includes(d.action)) {
         setInterventionsToday((n) => n + 1);
       }
+      if (d.agent !== "supervisor") setAgentStatus("idle");
     }
   }, []);
 
