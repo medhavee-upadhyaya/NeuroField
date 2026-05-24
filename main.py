@@ -2,6 +2,7 @@
 import asyncio
 import os
 import sys
+import time
 
 import uvicorn
 
@@ -14,19 +15,45 @@ from simulation.renderer import Renderer
 from simulation.robot import RobotController
 from simulation.sensors import SensorStream
 
+BANNER = """
+ ███╗   ██╗███████╗██╗   ██╗██████╗  ██████╗ ███████╗██╗███████╗██╗     ██████╗
+ ████╗  ██║██╔════╝██║   ██║██╔══██╗██╔═══██╗██╔════╝██║██╔════╝██║     ██╔══██╗
+ ██╔██╗ ██║█████╗  ██║   ██║██████╔╝██║   ██║█████╗  ██║█████╗  ██║     ██║  ██║
+ ██║╚██╗██║██╔══╝  ██║   ██║██╔══██╗██║   ██║██╔══╝  ██║██╔══╝  ██║     ██║  ██║
+ ██║ ╚████║███████╗╚██████╔╝██║  ██║╚██████╔╝██║     ██║███████╗███████╗██████╔╝
+ ╚═╝  ╚═══╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝╚══════╝╚═════╝
+                    Autonomous Agricultural Robot Agent  v1.0
+"""
 
-async def run(headless: bool = False):
+
+def _print_startup(demo: bool, headless: bool):
+    print(BANNER)
+    print(f"  Mode:      {'DEMO (pre-seeded scenario)' if demo else 'Live simulation'}")
+    print(f"  3D:        {'Headless — 3D view in dashboard' if headless else 'PyBullet window'}")
+    print(f"  Agent:     claude-sonnet-4-6  (Supervisor → Worker pipeline)")
+    print(f"  Memory:    data/memory.json")
+    print(f"  Replay DB: data/replay.db")
+    print()
+
+
+async def run(headless: bool = False, demo: bool = False):
+    _print_startup(demo, headless)
+
     sensors = SensorStream()
     memory = AgentMemory()
     logger = SnapshotLogger()
     farm = FarmEnvironment(headless=headless)
     farm.start()
 
+    # Seed demo scenario before agent starts so first cycle sees problems
+    if demo:
+        from simulation.demo_seeder import seed
+        seed(sensors)
+
     robot = RobotController(farm, sensors)
     brain = NeuroFieldBrain(sensors, memory)
     renderer = Renderer(farm, sensors)
 
-    # ---- wire agent callbacks ----
     async def on_decision(decision, snapshot):
         from api.websocket import manager
         await logger.log_event("agent_decision", {
@@ -81,7 +108,6 @@ async def run(headless: bool = False):
     brain.on_alert(on_alert)
     brain.on_execution_request(on_execution_request)
 
-    # ---- periodic snapshot logging ----
     async def logging_loop():
         last_logged = 0.0
         while True:
@@ -103,10 +129,15 @@ async def run(headless: bool = False):
         asyncio.create_task(server.serve()),
     ]
 
-    print("[NeuroField] All systems online")
-    print("[NeuroField] API        → http://localhost:8000")
-    print("[NeuroField] Replay API → http://localhost:8000/replay/bounds")
-    print("[NeuroField] Dashboard  → http://localhost:3000")
+    print("  ┌─────────────────────────────────────────┐")
+    print("  │  API          http://localhost:8000      │")
+    print("  │  Dashboard    http://localhost:3000      │")
+    print("  │  Replay API   /replay/bounds             │")
+    print("  │  Chat API     POST /chat                 │")
+    print("  │  Alerts API   GET /alerts                │")
+    print("  └─────────────────────────────────────────┘")
+    print()
+    print("  Press Ctrl+C to stop.\n")
 
     try:
         await asyncio.gather(*tasks)
@@ -116,9 +147,10 @@ async def run(headless: bool = False):
         brain.stop()
         renderer.stop()
         farm.stop()
-        print("[NeuroField] Shutdown complete")
+        print("\n[NeuroField] Shutdown complete.")
 
 
 if __name__ == "__main__":
     headless = "--headless" in sys.argv
-    asyncio.run(run(headless=headless))
+    demo = "--demo" in sys.argv
+    asyncio.run(run(headless=headless, demo=demo))

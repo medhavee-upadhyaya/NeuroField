@@ -1,16 +1,136 @@
 {
-  "treated_sectors": {},
-  "intervention_stats": {
-    "irrigate": {"attempts": 0, "successes": 0},
-    "spray": {"attempts": 0, "successes": 0},
-    "fertilize": {"attempts": 0, "successes": 0},
-    "navigate": {"attempts": 0, "successes": 0},
-    "report": {"attempts": 0, "successes": 0},
-    "wait": {"attempts": 0, "successes": 0}
+  "treated_sectors": {
+    "E5": {
+      "timestamp": 1779607574.6373708,
+      "action": "spray",
+      "success": true
+    },
+    "A1": {
+      "timestamp": 1779607606.632906,
+      "action": "irrigate",
+      "success": true
+    }
   },
-  "chronic_sectors": {},
-  "event_log": [],
-  "outcome_log": [],
+  "intervention_stats": {
+    "irrigate": {
+      "attempts": 1,
+      "successes": 1,
+      "outcome_successes": 1
+    },
+    "spray": {
+      "attempts": 1,
+      "successes": 1,
+      "outcome_successes": 1
+    },
+    "fertilize": {
+      "attempts": 0,
+      "successes": 0
+    },
+    "navigate": {
+      "attempts": 0,
+      "successes": 0
+    },
+    "report": {
+      "attempts": 0,
+      "successes": 0
+    },
+    "wait": {
+      "attempts": 0,
+      "successes": 0
+    }
+  },
+  "chronic_sectors": {
+    "E5": {
+      "occurrences": 1,
+      "actions": [
+        {
+          "action": "spray",
+          "time": 1779607574.6373792,
+          "success": true
+        }
+      ]
+    },
+    "A1": {
+      "occurrences": 1,
+      "actions": [
+        {
+          "action": "irrigate",
+          "time": 1779607606.632917,
+          "success": true
+        }
+      ]
+    }
+  },
+  "event_log": [
+    {
+      "timestamp": 1779607572.632596,
+      "snapshot_ts": 1779607556.7830138,
+      "observation": "Assigned: spray on E5",
+      "diagnosis": "Current sensor readings for E5 fully support the Supervisor's spray recommendation. Pest outbreak is confirmed active with severity 0.82 after 9 cycles \u2014 a high-persistence, high-severity infestation. Crop health at 0.576 indicates meaningful degradation already underway, consistent with sustained pest pressure. Soil moisture at 0.638 is within acceptable range and will not significantly dilute or interfere with pesticide efficacy. Temperature at 21.5\u00b0C is within optimal application range (typically 15\u201325\u00b0C), ensuring good chemical activity and low evaporation risk. Adjacent sector E6 is already infected, confirming active lateral spread \u2014 delay increases bridge risk. No conflicting conditions detected (no extreme heat, no waterlogging, no conflicting anomaly types). All indicators align: immediate spray action is warranted and safe to execute.",
+      "confidence": 0.87,
+      "action": "spray",
+      "target_sector": "E5",
+      "reasoning": "Current sensor readings for E5 fully support the Supervisor's spray recommendation. Pest outbreak is confirmed active with severity 0.82 after 9 cycles \u2014 a high-persistence, high-severity infestation. Crop health at 0.576 indicates meaningful degradation already underway, consistent with sustained pest pressure. Soil moisture at 0.638 is within acceptable range and will not significantly dilute or interfere with pesticide efficacy. Temperature at 21.5\u00b0C is within optimal application range (typically 15\u201325\u00b0C), ensuring good chemical activity and low evaporation risk. Adjacent sector E6 is already infected, confirming active lateral spread \u2014 delay increases bridge risk. No conflicting conditions detected (no extreme heat, no waterlogging, no conflicting anomaly types). All indicators align: immediate spray action is warranted and safe to execute.",
+      "alert_level": "critical"
+    },
+    {
+      "timestamp": 1779607603.6280699,
+      "snapshot_ts": 1779607584.640372,
+      "observation": "Assigned: irrigate on A1",
+      "diagnosis": "Current sensor readings for A1 support the irrigation directive, though with some nuance. Soil moisture reads 0.455, which is below the healthy threshold typically around 0.55\u20130.65, confirming that drought conditions are real and not a stale anomaly flag. The active 'drought' anomaly tag aligns with this low moisture reading. Crop health is currently 0.826, indicating crops are not yet critically stressed \u2014 this is a window of opportunity to act before health degrades further. Temperature at 22.5\u00b0C is moderate and not exacerbating heat stress, but the drought at severity 0.75 with 12 active cycles signals sustained moisture deficit rather than a transient reading. The Supervisor's concern about lateral spread to A2 (sev=0.55) is structurally sound \u2014 irrigating A1 now is the correct preventive measure. Confidence is set to 0.78 rather than higher because crop health at 0.826 suggests the situation, while serious, is not yet an emergency, and irrigation quantity should be calibrated carefully to avoid over-saturation given the relatively moderate temperature. Proceeding with irrigation is confirmed.",
+      "confidence": 0.78,
+      "action": "irrigate",
+      "target_sector": "A1",
+      "reasoning": "Current sensor readings for A1 support the irrigation directive, though with some nuance. Soil moisture reads 0.455, which is below the healthy threshold typically around 0.55\u20130.65, confirming that drought conditions are real and not a stale anomaly flag. The active 'drought' anomaly tag aligns with this low moisture reading. Crop health is currently 0.826, indicating crops are not yet critically stressed \u2014 this is a window of opportunity to act before health degrades further. Temperature at 22.5\u00b0C is moderate and not exacerbating heat stress, but the drought at severity 0.75 with 12 active cycles signals sustained moisture deficit rather than a transient reading. The Supervisor's concern about lateral spread to A2 (sev=0.55) is structurally sound \u2014 irrigating A1 now is the correct preventive measure. Confidence is set to 0.78 rather than higher because crop health at 0.826 suggests the situation, while serious, is not yet an emergency, and irrigation quantity should be calibrated carefully to avoid over-saturation given the relatively moderate temperature. Proceeding with irrigation is confirmed.",
+      "alert_level": "medium"
+    }
+  ],
+  "outcome_log": [
+    {
+      "sector_id": "E5",
+      "action": "spray",
+      "success": true,
+      "pre": {
+        "soil_moisture": 0.6378586424125858,
+        "crop_health": 0.5761808522970894,
+        "temperature": 21.533595996130007
+      },
+      "post": {
+        "soil_moisture": 0.6358142010664346,
+        "crop_health": 0.8776397689052401,
+        "temperature": 21.59873963163732
+      },
+      "delta": {
+        "soil_moisture": -0.002,
+        "crop_health": 0.301,
+        "temperature": 0.065
+      },
+      "evaluated_at": 1779607616.637177,
+      "note": "spray succeeded \u2014 metrics improved as expected"
+    },
+    {
+      "sector_id": "A1",
+      "action": "irrigate",
+      "success": true,
+      "pre": {
+        "soil_moisture": 0.45498283089147334,
+        "crop_health": 0.8263448823019641,
+        "temperature": 22.53665753846704
+      },
+      "post": {
+        "soil_moisture": 0.848347455004087,
+        "crop_health": 0.8253864919048134,
+        "temperature": 22.21768264325255
+      },
+      "delta": {
+        "soil_moisture": 0.393,
+        "crop_health": -0.001,
+        "temperature": -0.319
+      },
+      "evaluated_at": 1779607641.07326,
+      "note": "irrigate succeeded \u2014 metrics improved as expected"
+    }
+  ],
   "failed_treatments": {},
-  "last_updated": null
+  "last_updated": 1779607641.073382
 }
