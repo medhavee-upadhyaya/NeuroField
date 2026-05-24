@@ -6,6 +6,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes import router, inject
+from api.replay import replay_router, inject_logger
 from api.websocket import manager
 
 app = FastAPI(title="NeuroField API", version="1.0.0")
@@ -19,8 +20,9 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(replay_router)
 
-# injected at startup by main.py
+# injected at startup
 _sensors = None
 _brain = None
 
@@ -44,7 +46,6 @@ async def broadcast_loop():
             brain_status = "offline"
             last_decision = None
 
-            # lazy import to avoid circular
             from api.routes import _robot, _brain as route_brain
             if _robot:
                 x, y = _robot.farm.get_robot_position()
@@ -66,11 +67,13 @@ async def broadcast_loop():
         await asyncio.sleep(2.0)
 
 
-def setup_api(sensors, memory, brain, robot):
+def setup_api(sensors, memory, brain, robot, logger=None):
     global _sensors, _brain
     _sensors = sensors
     _brain = brain
     inject(sensors, memory, brain, robot)
+    if logger:
+        inject_logger(logger)
 
     @app.on_event("startup")
     async def _start_broadcast():
