@@ -5,6 +5,7 @@ import SensorPanel from "./SensorPanel";
 import ReplayPanel from "./ReplayPanel";
 import ChatPanel from "./ChatPanel";
 import { useAlertToasts, AlertToastContainer, AlertHistoryPanel } from "./AlertToast";
+import FarmScene3D from "./FarmScene3D";
 
 const WS_URL = "ws://localhost:8000/ws/live";
 const API_URL = "http://localhost:8000";
@@ -45,6 +46,7 @@ export default function App() {
   const [wsConnected, setWsConnected] = useState(false);
   const [showReplay, setShowReplay] = useState(false);
   const [rightTab, setRightTab] = useState("sensor"); // "sensor" | "chat"
+  const [viewMode, setViewMode] = useState("2d"); // "2d" | "3d"
   const [failedSectors, setFailedSectors] = useState({});
   const [alertHistory, setAlertHistory] = useState([]);
   const [showAlerts, setShowAlerts] = useState(false);
@@ -196,21 +198,45 @@ export default function App() {
       {/* Main panels */}
       <div style={styles.main}>
         <div style={styles.leftPanel}>
-          <div style={styles.panelHeader}>FARM GRID</div>
-          <FarmGrid
-            snapshot={snapshot}
-            robot={isReplayMode ? null : robot}
-            selectedSector={selectedSector}
-            onSelectSector={setSelectedSector}
-            failedSectors={isReplayMode ? {} : failedSectors}
-          />
-          <div style={styles.gridLegend}>
-            <LegendItem color="#388e3c" label="Healthy" />
-            <LegendItem color="#f9a825" label="Warning" />
-            <LegendItem color="#c62828" label="Critical" />
-            <LegendItem color="#1565c0" label="Robot" />
-            <LegendItem color="#ff5722" label="Failed TX" />
+          <div style={styles.panelHeader}>
+            FARM GRID
+            <div style={styles.viewToggle}>
+              <button
+                onClick={() => setViewMode("2d")}
+                style={{ ...styles.viewBtn, ...(viewMode === "2d" ? styles.viewBtnActive : {}) }}
+              >2D</button>
+              <button
+                onClick={() => setViewMode("3d")}
+                style={{ ...styles.viewBtn, ...(viewMode === "3d" ? styles.viewBtnActive : {}) }}
+              >3D</button>
+            </div>
           </div>
+
+          {viewMode === "2d" ? (
+            <>
+              <FarmGrid
+                snapshot={snapshot}
+                robot={isReplayMode ? null : robot}
+                selectedSector={selectedSector}
+                onSelectSector={setSelectedSector}
+                failedSectors={isReplayMode ? {} : failedSectors}
+              />
+              <div style={styles.gridLegend}>
+                <LegendItem color="#388e3c" label="Healthy" />
+                <LegendItem color="#f9a825" label="Warning" />
+                <LegendItem color="#c62828" label="Critical" />
+                <LegendItem color="#1565c0" label="Robot" />
+                <LegendItem color="#ff5722" label="Failed TX" />
+              </div>
+            </>
+          ) : (
+            <FarmScene3D
+              snapshot={snapshot}
+              robot={isReplayMode ? null : robot}
+              selectedSector={selectedSector}
+              failedSectors={isReplayMode ? {} : failedSectors}
+            />
+          )}
         </div>
 
         <div style={styles.centerPanel}>
@@ -345,6 +371,13 @@ const styles = {
   tabActive: {
     color: "#e6edf3", borderBottomColor: "#4caf50",
   },
+  viewToggle: { display: "flex", marginLeft: "auto", border: "1px solid #30363d", borderRadius: 3, overflow: "hidden" },
+  viewBtn: {
+    background: "none", border: "none", color: "#8b949e",
+    fontSize: 9, fontWeight: 700, padding: "2px 7px",
+    cursor: "pointer", fontFamily: "inherit",
+  },
+  viewBtnActive: { background: "#30363d", color: "#e6edf3" },
   alertPing: {
     position: "absolute", top: 0, right: -4,
     width: 8, height: 8, borderRadius: "50%",

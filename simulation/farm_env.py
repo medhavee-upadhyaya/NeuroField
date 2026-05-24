@@ -1,4 +1,10 @@
-"""PyBullet 3D farm grid environment."""
+"""Farm grid environment — PyBullet 3D if available, headless otherwise.
+
+3D visualization is handled by the React dashboard (FarmScene3D.jsx) which
+renders an isometric canvas view of the farm grid without any native deps.
+PyBullet provides optional physics simulation but is not required for the
+full visual demo.
+"""
 import math
 import time
 import threading
