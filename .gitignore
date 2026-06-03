@@ -1,0 +1,23 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Node
+dashboard/node_modules/
+dashboard/dist/
+
+# Data / runtime
+data/replay.db
+data/memory.json
+
+# Internal docs (not for public repo)
+CLAUDE.md
+
+# OS
+.DS_Store
