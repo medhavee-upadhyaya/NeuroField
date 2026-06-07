@@ -1,20 +1,33 @@
 # NeuroField
 
-Autonomous agricultural robot agent that manages a simulated 10×10 farm grid. A multi-agent AI system (Supervisor + Worker, both powered by Claude) triages the farm, dispatches a simulated robot via A* pathfinding, and learns from treatment outcomes over time.
+<!-- Replace the line below with your GIF once recorded: -->
+<!-- ![NeuroField demo](assets/demo.gif) -->
+
+![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)
+![Claude](https://img.shields.io/badge/Built%20with-Claude-blueviolet?logo=anthropic&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
+![License](https://img.shields.io/badge/License-MIT-green)
+
+## What this is
+
+NeuroField is a fully autonomous multi-agent AI system that manages a simulated 10×10 farm grid. Two Claude agents — a **Supervisor** and a **Worker** — run a continuous reasoning loop every 10 seconds: the Supervisor triages all 100 sectors and builds a priority queue; the Worker confirms each action with a confidence score before a simulated robot executes it via A* pathfinding. Every treatment outcome is evaluated 20 seconds later and fed back into future decisions, closing the loop.
+
+This project demonstrates what it takes to build a production-shaped autonomous agent: structured JSON contracts between agents, persistent memory, outcome-driven learning, real-time visualization, and human escalation via alerts — not just a chatbot with tools.
 
 ## Features
 
-- **Dual-agent AI loop** — Supervisor ranks all 100 sectors every ~10s; Worker confirms each action with confidence scoring
-- **Outcome learning** — treatments are evaluated 20s after application; failures are logged and influence future decisions
-- **Real-time dashboard** — React app with 2D grid, isometric 3D view, live agent log, replay timeline, and streaming chat
-- **Alert dispatch** — escalates critical events (failed treatments, spreading anomalies) via webhook or SMTP
-- **Replay** — SQLite stores up to 2000 snapshots (~5.5h); scrub through full farm history in the dashboard
+- **Dual-agent reasoning loop** — Supervisor ranks all 100 sectors every ~10s; Worker confirms each action with a confidence score before execution
+- **Outcome learning** — treatments are evaluated 20s after application; consecutive failures are logged and influence future agent decisions
+- **Real-time dashboard** — React app with 2D grid, isometric 3D canvas view, live agent log, time-lapse replay, and streaming natural language chat
+- **Alert dispatch** — escalates critical events (failed treatments, spreading anomalies) via webhook or SMTP with per-sector cooldown
+- **Replay** — SQLite stores up to 2000 snapshots (~5.5h at 10s/cycle); scrub through full farm history in the dashboard
 
 ## Stack
 
 | Layer | Tech |
 |---|---|
-| Agent / AI | Claude (claude-sonnet-4-6), Anthropic Python SDK |
+| Agent / AI | Claude (`claude-sonnet-4-6`), Anthropic Python SDK |
 | Backend | FastAPI, asyncio, WebSocket |
 | Simulation | NumPy, A* pathfinding, SQLite |
 | Dashboard | React, Vite, Canvas 2D/3D |
@@ -82,3 +95,7 @@ Alert triggers:
 - An Anthropic API key
 
 > PyBullet is disabled on macOS 15 / Xcode 17 due to SDK incompatibility. The 3D view is rendered in the browser canvas instead.
+
+## License
+
+MIT
