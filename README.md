@@ -1,7 +1,6 @@
 # NeuroField
 
-<!-- Add your demo GIF here once recorded: -->
-<!-- ![NeuroField demo](assets/demo.gif) -->
+![NeuroField demo](assets/demo.gif)
 
 | | |
 |---|---|
