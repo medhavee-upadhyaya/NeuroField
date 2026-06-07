@@ -1,7 +1,11 @@
 # NeuroField
 
-<!-- Replace the line below with your GIF once recorded: -->
+<!-- Add your demo GIF here once recorded: -->
 <!-- ![NeuroField demo](assets/demo.gif) -->
+
+| | |
+|---|---|
+| ![Supervisor reasoning + farm grid](assets/screenshot-1.png) | ![Outcome learning — spray succeeded](assets/screenshot-2.png) |
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)
 ![Claude](https://img.shields.io/badge/Built%20with-Claude-blueviolet?logo=anthropic&logoColor=white)
