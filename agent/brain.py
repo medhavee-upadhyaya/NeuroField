@@ -8,7 +8,9 @@ import anthropic
 
 from agent.alert_dispatcher import AlertDispatcher
 from agent.memory import AgentMemory
+from agent.meta_agent import MetaAgent, META_INTERVAL
 from agent.outcome_tracker import OutcomeTracker
+from agent.prompts import PromptStore
 from agent.supervisor import Supervisor
 from agent.worker import Worker
 from simulation.sensors import SensorStream
@@ -21,11 +23,14 @@ class NeuroFieldBrain:
         self.sensors = sensors
         self.memory = memory
         self.client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-        self.supervisor = Supervisor(self.client)
-        self.worker = Worker(self.client)
+        self.prompt_store = PromptStore()
+        self.supervisor = Supervisor(self.client, self.prompt_store)
+        self.worker = Worker(self.client, self.prompt_store)
+        self.meta_agent = MetaAgent(self.client, self.prompt_store)
         self.outcome_tracker = OutcomeTracker()
         self.alerts = AlertDispatcher()
         self._running = False
+        self._cycle_count = 0
         self._on_worker_decision: Optional[Callable] = None
         self._on_execution_request: Optional[Callable] = None
         self._on_outcome: Optional[Callable] = None
@@ -185,6 +190,24 @@ class NeuroFieldBrain:
                 print(f"[Worker] Execution failed: {result.get('error', '?')}")
 
         self.status = "idle"
+
+        # ── MetaAgent: self-improve every META_INTERVAL cycles ────────────
+        self._cycle_count += 1
+        if self._cycle_count % META_INTERVAL == 0:
+            print(f"[MetaAgent] Running self-improvement review (cycle {self._cycle_count})…")
+            outcome_log = self.memory.get_outcome_log(limit=30)
+            memory_summary = self.memory.summary_for_agent()
+            meta_result = await self.meta_agent.run(memory_summary, outcome_log)
+            if meta_result and self._on_worker_decision:
+                await self._on_worker_decision(
+                    {
+                        "agent": "meta",
+                        "changes_summary": meta_result["changes_summary"],
+                        "revision": self.meta_agent.revision_count,
+                        "timestamp": time.time(),
+                    },
+                    snapshot,
+                )
 
     def stop(self):
         self._running = False

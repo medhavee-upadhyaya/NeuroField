@@ -164,6 +164,29 @@ function OutcomeCard({ outcome }) {
   );
 }
 
+function MetaCard({ decision }) {
+  return (
+    <div style={{ ...styles.card, borderLeft: "3px solid #ffc107", background: "#1a1500" }}>
+      <div style={styles.cardHeader}>
+        <div style={styles.cardLeft}>
+          <span style={styles.ts}>{timestamp(decision.timestamp)}</span>
+          <span style={{ ...styles.agentBadge, background: "#ffc10722", color: "#ffe082", border: "1px solid #ffc10744" }}>
+            META
+          </span>
+          <span style={{ ...styles.agentBadge, background: "#ffc10711", color: "#ffc107", border: "1px solid #ffc10733" }}>
+            PROMPTS UPDATED
+          </span>
+        </div>
+        <span style={{ color: "#8b949e", fontSize: 10 }}>revision #{decision.revision}</span>
+      </div>
+      <div style={styles.field}>
+        <span style={styles.label}>NOTE</span>
+        <span style={{ ...styles.value, color: "#ffe082" }}>{decision.changes_summary}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function AgentLog({ decisions }) {
   const bottomRef = useRef(null);
 
@@ -180,6 +203,7 @@ export default function AgentLog({ decisions }) {
       {[...decisions].map((d, i) => {
         if (d._type === "outcome") return <OutcomeCard key={i} outcome={d} />;
         if (d.agent === "supervisor") return <SupervisorCard key={i} decision={d} />;
+        if (d.agent === "meta") return <MetaCard key={i} decision={d} />;
         return <WorkerCard key={i} decision={d} />;
       })}
       <div ref={bottomRef} />

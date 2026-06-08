@@ -1,3 +1,46 @@
+import json
+from pathlib import Path
+
+_PROMPTS_PATH = Path(__file__).parent.parent / "data" / "prompts.json"
+
+
+class PromptStore:
+    """Loads prompts from data/prompts.json; falls back to hardcoded defaults."""
+
+    def __init__(self):
+        self._supervisor = None
+        self._worker = None
+        self._load()
+
+    def _load(self):
+        if _PROMPTS_PATH.exists():
+            try:
+                data = json.loads(_PROMPTS_PATH.read_text())
+                self._supervisor = data.get("supervisor_prompt")
+                self._worker = data.get("worker_prompt")
+            except (json.JSONDecodeError, OSError):
+                pass
+
+    def get_supervisor_prompt(self) -> str:
+        return self._supervisor or SUPERVISOR_PROMPT
+
+    def get_worker_prompt(self) -> str:
+        return self._worker or WORKER_PROMPT
+
+    def update(self, supervisor_prompt: str, worker_prompt: str):
+        self._supervisor = supervisor_prompt
+        self._worker = worker_prompt
+        _PROMPTS_PATH.write_text(
+            json.dumps({"supervisor_prompt": supervisor_prompt, "worker_prompt": worker_prompt}, indent=2)
+        )
+
+    def reset(self):
+        self._supervisor = None
+        self._worker = None
+        if _PROMPTS_PATH.exists():
+            _PROMPTS_PATH.unlink()
+
+
 SUPERVISOR_PROMPT = """You are the NeuroField Supervisor — the strategic planning layer of an autonomous agricultural AI.
 
 You survey the entire farm grid, triage all active problems, and produce a prioritized work queue for the Worker agent to execute one task at a time.

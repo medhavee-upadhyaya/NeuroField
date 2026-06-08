@@ -7,7 +7,7 @@ from typing import Optional
 import anthropic
 
 from agent.planner import validate_plan
-from agent.prompts import WORKER_PROMPT, build_worker_message
+from agent.prompts import build_worker_message
 
 MAX_RETRIES = 2
 RETRY_DELAY = 1.5
@@ -45,8 +45,9 @@ def _parse_worker_response(raw: str) -> Optional[dict]:
 
 
 class Worker:
-    def __init__(self, client: anthropic.Anthropic):
+    def __init__(self, client: anthropic.Anthropic, prompt_store):
         self.client = client
+        self.prompt_store = prompt_store
         self.last_result: Optional[dict] = None
 
     async def execute_task(self, task: dict, snapshot: dict, failed_treatments: dict = None) -> Optional[dict]:
@@ -58,7 +59,7 @@ class Worker:
                     lambda: self.client.messages.create(
                         model="claude-sonnet-4-6",
                         max_tokens=512,
-                        system=WORKER_PROMPT,
+                        system=self.prompt_store.get_worker_prompt(),
                         messages=[{"role": "user", "content": message}],
                     )
                 )

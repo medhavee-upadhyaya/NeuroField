@@ -6,7 +6,7 @@ from typing import List, Optional
 
 import anthropic
 
-from agent.prompts import SUPERVISOR_PROMPT, build_supervisor_message
+from agent.prompts import build_supervisor_message
 
 MAX_RETRIES = 3
 RETRY_DELAY = 2.0
@@ -50,8 +50,9 @@ def _parse_queue(raw: str) -> Optional[dict]:
 
 
 class Supervisor:
-    def __init__(self, client: anthropic.Anthropic):
+    def __init__(self, client: anthropic.Anthropic, prompt_store):
         self.client = client
+        self.prompt_store = prompt_store
         self.last_result: Optional[dict] = None
 
     async def plan(self, snapshot: dict, memory_summary: dict) -> Optional[dict]:
@@ -63,7 +64,7 @@ class Supervisor:
                     lambda: self.client.messages.create(
                         model="claude-sonnet-4-6",
                         max_tokens=1024,
-                        system=SUPERVISOR_PROMPT,
+                        system=self.prompt_store.get_supervisor_prompt(),
                         messages=[{"role": "user", "content": message}],
                     )
                 )
