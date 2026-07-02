@@ -383,6 +383,36 @@ def doctor():
     click.echo()
 
 
+@cli.command()
+@click.option("--skip-api", is_flag=True, default=False,
+              help="Only run static & contract checks (no Claude API calls, no cost)")
+def review(skip_api: bool):
+    """Run the Lead Engineer Agent — verify code correctness and AI-review all source files.
+
+    \b
+    Tier 1: Static logic checks  (no API key required)
+    Tier 2: Data contract checks (no API key required)
+    Tier 3: Integration smoke test via real Supervisor + Worker agents
+    Tier 4: Claude acts as senior engineer and reviews the source code
+    """
+    import asyncio
+    from agent.lead_engineer import LeadEngineerAgent
+
+    if not skip_api:
+        _check_api_key()
+
+    click.echo()
+    click.secho("  NeuroField — Lead Engineer Review", bold=True, fg="cyan")
+    click.secho("  Automated code verification + AI senior engineer review", fg="bright_black")
+    click.echo()
+
+    agent = LeadEngineerAgent()
+    findings = asyncio.run(agent.run(skip_api=skip_api))
+
+    failed = sum(1 for f in findings if f.severity == "fail")
+    sys.exit(1 if failed else 0)
+
+
 def _check_item(label: str, status, hint: str = None, extra: str = None):
     if status is True:
         icon = click.style("  ✓", fg="green")
